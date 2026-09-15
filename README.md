@@ -26,6 +26,12 @@ Implemented and validated:
 - TypeScript checking
 - Matching unit tests
 - Production build
+- Shared authenticated application shell
+- Responsive profile dropdown with protected navigation
+- Dedicated Browse, Matches, Requests, Profile, Settings, and Notifications pages
+- Read-only public profile viewing from Browse and Matches
+- Cohesive dark SaaS/EdTech visual system across authenticated and public screens
+- Responsive layouts for desktop, tablet, and mobile
 
 Not yet implemented:
 
@@ -158,6 +164,41 @@ Supported actions:
 - Self-requests are rejected.
 - Duplicate active requests are rejected in both directions.
 
+### Application experience
+
+The application uses two related experiences built on one design system:
+
+- The home route (`/`) is a marketing-led landing and discovery experience.
+- Authenticated routes use a shared `AppShell` with a sticky navbar, profile menu, content area, and footer.
+- The profile avatar opens an accessible dropdown containing Profile, Account Settings, Notifications, and Sign Out.
+- Sign Out calls the real logout endpoint, clears React Query cache, clears auth state, and redirects to `/`.
+- Protected routes redirect unauthenticated users to `/login`.
+
+Current frontend routes:
+
+| Route | Access | Purpose |
+|---|---|---|
+| `/` | Public | Landing page and live discovery section |
+| `/browse` | Public | Server-filtered and paginated learner discovery |
+| `/login` | Public | Session login |
+| `/signup` | Public | Account and initial profile creation |
+| `/matches` | Protected | Explainable compatibility recommendations |
+| `/requests` | Protected | Received and sent request management |
+| `/profile` | Protected | Current-user profile editing and skill display |
+| `/profile?user=<id>` | Protected | Read-only public profile view |
+| `/settings` | Protected | Account, privacy, and security settings overview |
+| `/notifications` | Protected | Honest empty state until notification persistence is implemented |
+
+The visual system is shared across pages:
+
+- Deep navy and black backgrounds
+- Purple-to-blue gradients
+- Cyan interaction accents
+- Glassmorphism panels and soft borders
+- Space Grotesk headings and DM Sans body text
+- Responsive cards, forms, status badges, and empty states
+- Subtle transitions with `prefers-reduced-motion` support
+
 ## Architecture
 
 ```mermaid
@@ -237,6 +278,7 @@ client/
     main.tsx                React entry point
     index.css               Tailwind and application styles
     components/             Shared UI and legacy reusable components
+      AppShell.jsx          Authenticated shell, navbar, profile menu, route guard
     hooks/                  Client hooks such as toast handling
     lib/
       auth.tsx              Shared server-session auth provider
@@ -248,6 +290,9 @@ client/
       profile.jsx           Authenticated profile editor
       requests.jsx          Sent and received request dashboard
       matches.jsx           Ranked compatibility results
+      browse.jsx            Public server-filtered discovery page
+      settings.jsx          Account and privacy settings overview
+      notifications.jsx     Notification placeholder until backend support exists
 
 server/
   index.ts                  Express application bootstrap
@@ -508,6 +553,27 @@ npm run db:push
 ```
 
 The application will refuse to start if `DATABASE_URL` or `SESSION_SECRET` is missing.
+
+### Neon setup
+
+This workspace is linked to the Neon project used for the production database branch. Neon configuration is kept in [neon.ts](neon.ts), and the committed policy intentionally declares the default configuration:
+
+```ts
+import { defineConfig } from "@neon/config/v1";
+
+export default defineConfig({});
+```
+
+The local Neon CLI workflow is:
+
+```powershell
+npm install -g neon@latest
+neon login
+neon link --project-id green-leaf-75115622 --branch production -y
+neon deploy
+```
+
+`neon link` writes the branch connection variables into the local `.env` file. `.env` is excluded from Git and must never be committed. The Neon Skills CLI additionally requires Node.js `22.20.0` or newer; the application itself does not require that CLI feature to run.
 
 ### Start development mode
 
