@@ -1,240 +1,221 @@
 # SkillSwap
 
-SkillSwap is a peer-to-peer learning platform where users exchange skills. A user can describe the skills they offer, the skills they want to learn, their availability, and their visibility preferences. The application helps users discover compatible learning partners and manage skill-swap requests.
+## Learn Together. Grow Together.
 
-This repository is an interview-oriented full-stack application built from an earlier prototype. The current implementation uses PostgreSQL persistence, server-side sessions, password hashing, authorization rules, server-side discovery, an explainable matching engine, and a request-management workflow.
+SkillSwap is a peer-to-peer skill exchange platform that helps people learn from one another. Users can share the skills they know, describe the skills they want to learn, discover compatible people, and start skill-swap conversations through requests.
 
-## Current Status
+The platform is designed around a simple idea:
 
-Implemented and validated:
+> Everyone knows something valuable, and everyone has something new to learn.
 
-- React/Vite frontend
-- Express/TypeScript backend
-- PostgreSQL persistence through Drizzle ORM
-- HTTP-only cookie sessions
-- bcrypt password hashing
-- Registration, login, logout, and current-user lookup
-- Public/private profiles
-- Profile editing
-- Server-side search, filtering, sorting, and pagination
-- Skill normalization and common aliases
-- Compatibility matching with explanations
-- Sent and received swap-request management
-- Accept, reject, and cancel request actions
-- Ownership and state-transition authorization
-- Duplicate and self-request prevention
-- TypeScript checking
-- Matching unit tests
-- Production build
-- Shared authenticated application shell
-- Responsive profile dropdown with protected navigation
-- Dedicated Browse, Matches, Requests, Profile, Settings, and Notifications pages
-- Read-only public profile viewing from Browse and Matches
-- Cohesive dark SaaS/EdTech visual system across authenticated and public screens
-- Responsive layouts for desktop, tablet, and mobile
+## What SkillSwap Does
 
-Not yet implemented:
+SkillSwap connects learners through complementary skills instead of traditional one-way courses.
 
-- Persistent in-app notifications
-- Ratings and reviews
-- Completed-swap state and review eligibility
-- Full API integration-test coverage
-- End-to-end browser tests
-- Docker or cloud deployment configuration
+A user can:
 
-## Features
+- Create an account securely
+- Build a personal learning profile
+- Add skills they can teach
+- Add skills they want to learn
+- Set their availability
+- Choose whether their profile is public
+- Browse other learners
+- Search by name or username
+- Filter by offered skills, wanted skills, and availability
+- Sort and paginate discovery results
+- View public profiles
+- See personalized learning matches
+- Understand why a match is recommended
+- Send skill-swap requests
+- View sent and received requests
+- Accept, reject, or cancel requests
+- Edit their profile and learning goals
+- Manage account and privacy settings
 
-### Authentication
+## How It Works
 
-- Register with username, name, email, password, skills, availability, and visibility.
-- Log in with email and password.
-- Passwords are hashed with `bcryptjs` and are never returned to the client.
-- Authentication is stored in a server-side Express session.
-- The browser receives an HTTP-only `connect.sid` cookie.
-- The frontend checks the current session through `GET /api/auth/me`.
-- Logout destroys the server session and clears the cookie.
+```text
+Create your profile
+        |
+        v
+Add skills you teach and want to learn
+        |
+        v
+Discover compatible learners
+        |
+        v
+Send a skill-swap request
+        |
+        v
+Accept the request and start learning together
+```
 
-### Profiles
+### 1. Create a profile
 
-Users can create and edit:
+Add your name, location, avatar, availability, and learning interests.
+
+### 2. Share your skills
+
+List the skills you can teach and the skills you want to learn. SkillSwap normalizes common variations such as `JS`, `JavaScript`, and `javascript` so discovery remains consistent.
+
+### 3. Find compatible people
+
+Browse public profiles or open the Matches page. The matching engine compares both sides of a potential exchange:
+
+- What you want to learn versus what they offer
+- What you offer versus what they want to learn
+- Availability overlap
+- Location compatibility
+- Profile rating
+
+### 4. Start an exchange
+
+Send a message with a skill-swap request. The recipient can accept or reject it, while the sender can cancel a pending request.
+
+## Main Product Areas
+
+### Home
+
+The home page introduces SkillSwap and provides a live discovery experience. It includes:
+
+- Product introduction
+- Skill exchange explanation
+- How-it-works flow
+- Skill categories
+- Matching explanation
+- Live learner discovery
+- Search and filter controls
+- Calls to create an account or find matches
+
+### Browse
+
+`/browse` is the dedicated discovery page.
+
+It provides server-backed:
+
+- Search
+- Offered-skill filtering
+- Wanted-skill filtering
+- Availability filtering
+- Sorting by name, rating, or newest
+- Pagination
+- Loading, error, and empty states
+
+Each learner card displays their name, location, rating, offered skills, wanted skills, and availability.
+
+### Matches
+
+`/matches` shows personalized learning recommendations.
+
+Each match includes:
+
+- Learner profile
+- Compatibility score
+- Skills that overlap
+- Reasons explaining the match
+- Link to view the public profile
+
+The score is generated by the backend matching service rather than being a visual-only value.
+
+### Requests
+
+`/requests` is the request-management dashboard.
+
+It separates:
+
+- Received requests
+- Sent requests
+
+Received requests can be accepted or rejected. Sent pending requests can be cancelled. The backend validates ownership and allowed state transitions for every action.
+
+### Profile
+
+`/profile` is the authenticated user's profile workspace.
+
+Users can edit:
 
 - Name
 - Email
 - Location
 - Avatar URL
-- Skills offered
-- Skills wanted
+- Skills they teach
+- Skills they want to learn
 - Availability
 - Public/private visibility
 
-Users cannot directly modify:
+Public profiles can also be opened in read-only mode from Browse and Matches.
 
-- User ID
-- Password hash
-- Rating
-- Request ownership fields
+### Settings
 
-Profile updates are handled by `PATCH /api/users/me` and are protected by authentication middleware.
+`/settings` provides a focused account overview for:
 
-### Discovery
+- Account identity
+- Username and email
+- Profile visibility
+- Availability
+- Security information
+- Notification access
 
-The discovery page supports server-side:
+### Notifications
 
-- Name and username search
-- Offered-skill filtering
-- Wanted-skill filtering
-- Availability filtering
-- Location filtering
-- Sorting by name, rating, or newest
-- Pagination
+`/notifications` is the notification workspace connected to the application navigation. It provides a clear location for future request and learning updates.
 
-The backend returns a paginated response instead of sending the entire user table to the browser.
+## Benefits for Learners
 
-Private users are excluded from public discovery. When authenticated, the current user is also excluded from discovery results.
+SkillSwap benefits people who want a more active and personal way to learn.
 
-### Skill normalization
+### Learn from real people
 
-Skill input is normalized before storage and comparison:
+Instead of only consuming pre-recorded material, learners can connect with someone who has practical experience in the skill they want to develop.
 
-- Leading and trailing whitespace is removed.
-- Repeated whitespace is normalized.
-- Values are compared case-insensitively.
-- Duplicate skills are removed.
-- Common aliases are supported:
-  - `js` -> `javascript`
-  - `ts` -> `typescript`
-  - `reactjs` -> `react`
-  - `nodejs` -> `node.js`
+### Teach while learning
 
-The implementation is intentionally conservative and does not merge arbitrary unrelated skills.
+Users do not need to be professional instructors. They can exchange knowledge from their own experience and learn something valuable in return.
 
-### Matching
+### Discover mutual value
 
-Authenticated users can open `/matches` or call `GET /api/matches` to receive ranked compatible users.
+The platform focuses on two-way compatibility. A strong connection is not only someone who can teach you; it is someone whose learning goals also align with what you can offer.
 
-The matching service considers:
+### Find flexible learning opportunities
 
-- Skills the current user wants that the candidate offers
-- Skills the current user offers that the candidate wants
-- Availability overlap
-- Exact location match
-- Candidate rating
+Availability information helps people identify potential partners whose schedules are compatible.
 
-Every match includes:
+### Build meaningful connections
 
-- Candidate profile
-- Compatibility score from 0 to 100
-- Matching skills
-- Human-readable reasons
+Skill exchange encourages collaboration, conversation, accountability, and community instead of isolated learning.
 
-A candidate must have at least one mutual skill overlap to appear as a match. Location or availability alone cannot create a match.
+### Make learning more accessible
 
-### Swap requests
+Peer-to-peer exchange can help people learn without depending entirely on expensive courses or formal institutions.
 
-The request lifecycle is:
-
-```text
-User A discovers User B
-        |
-        v
-User A sends a request
-        |
-        v
-pending
-   /       \
-accept    reject
-  |          |
-accepted   rejected
-
-The sender may cancel while the request is pending.
-```
-
-The request dashboard at `/requests` separates:
-
-- Received requests
-- Sent requests
-
-Supported actions:
-
-- Recipient accepts a pending request.
-- Recipient rejects a pending request.
-- Sender cancels a pending request.
-- No user can modify another user's request.
-- Accepted, rejected, and cancelled requests cannot transition again.
-- Self-requests are rejected.
-- Duplicate active requests are rejected in both directions.
-
-### Application experience
-
-The application uses two related experiences built on one design system:
-
-- The home route (`/`) is a marketing-led landing and discovery experience.
-- Authenticated routes use a shared `AppShell` with a sticky navbar, profile menu, content area, and footer.
-- The profile avatar opens an accessible dropdown containing Profile, Account Settings, Notifications, and Sign Out.
-- Sign Out calls the real logout endpoint, clears React Query cache, clears auth state, and redirects to `/`.
-- Protected routes redirect unauthenticated users to `/login`.
-
-Current frontend routes:
-
-| Route | Access | Purpose |
-|---|---|---|
-| `/` | Public | Landing page and live discovery section |
-| `/browse` | Public | Server-filtered and paginated learner discovery |
-| `/login` | Public | Session login |
-| `/signup` | Public | Account and initial profile creation |
-| `/matches` | Protected | Explainable compatibility recommendations |
-| `/requests` | Protected | Received and sent request management |
-| `/profile` | Protected | Current-user profile editing and skill display |
-| `/profile?user=<id>` | Protected | Read-only public profile view |
-| `/settings` | Protected | Account, privacy, and security settings overview |
-| `/notifications` | Protected | Honest empty state until notification persistence is implemented |
-
-The visual system is shared across pages:
-
-- Deep navy and black backgrounds
-- Purple-to-blue gradients
-- Cyan interaction accents
-- Glassmorphism panels and soft borders
-- Space Grotesk headings and DM Sans body text
-- Responsive cards, forms, status badges, and empty states
-- Subtle transitions with `prefers-reduced-motion` support
-
-## Architecture
+## Technical Architecture
 
 ```mermaid
 flowchart TD
-    Browser[React + Vite browser app]
-    Router[Wouter routes]
+    Browser[React and Vite frontend]
+    Router[Wouter routing]
     Query[TanStack React Query]
     API[Express REST API]
-    Auth[Express session middleware]
-    Services[Validation and matching services]
-    Storage[DatabaseStorage repository]
-    Drizzle[Drizzle ORM]
-    PostgreSQL[(PostgreSQL)]
-    SessionTable[(PostgreSQL session table)]
+    Session[Express session middleware]
+    Validation[Zod validation]
+    Matching[Matching service]
+    Storage[Database storage layer]
+    ORM[Drizzle ORM]
+    DB[(Neon PostgreSQL)]
+    SessionDB[(PostgreSQL sessions)]
 
     Browser --> Router
     Router --> Query
     Query --> API
-    API --> Auth
-    Auth --> Services
-    Services --> Storage
-    Storage --> Drizzle
-    Drizzle --> PostgreSQL
-    Auth --> SessionTable
+    API --> Session
+    Session --> SessionDB
+    API --> Validation
+    API --> Matching
+    API --> Storage
+    Storage --> ORM
+    ORM --> DB
 ```
-
-### Request flow
-
-1. The browser sends a request with `credentials: "include"`.
-2. Express session middleware reads the HTTP-only session cookie.
-3. `requireAuth` loads the authenticated user and attaches it to `req.user`.
-4. Routes validate request input with Zod.
-5. Business rules are checked before mutations.
-6. `DatabaseStorage` executes Drizzle queries against PostgreSQL.
-7. Routes return explicit safe response objects.
-8. React Query updates or invalidates relevant client queries.
 
 ## Technology Stack
 
@@ -242,321 +223,202 @@ flowchart TD
 
 - React 18
 - Vite
-- TypeScript and JSX
 - Wouter
 - TanStack React Query
 - Tailwind CSS
-- Radix UI primitives
+- Radix UI
 - Lucide icons
-- React Hook Form dependencies are available for future form expansion
+- TypeScript and JSX
 
 ### Backend
 
 - Node.js
 - Express
 - TypeScript
+- Zod
 - Express Session
 - `connect-pg-simple`
 - `bcryptjs`
-- Zod
 
-### Database
+### Database and infrastructure
 
 - PostgreSQL
+- Neon PostgreSQL
 - Drizzle ORM
 - Drizzle Kit
 - `pg` connection pool
-- SQL migration in [migrations/0000_initial.sql](migrations/0000_initial.sql)
+- SQL migration support
+
+## Security and Data Protection
+
+SkillSwap uses server-side authentication and authorization.
+
+- Passwords are hashed with bcrypt.
+- Password hashes are never returned to the frontend.
+- Sessions are stored in PostgreSQL.
+- Authentication uses an HTTP-only cookie.
+- Protected routes require an authenticated session.
+- Users can edit only their own profile.
+- Request actions verify sender or recipient ownership.
+- Public responses exclude private email and password fields.
+- Private profiles are not exposed through public discovery.
+- Self-requests are rejected.
+- Duplicate active requests are rejected.
+- Request status transitions are validated by the backend.
+
+The frontend is not treated as the security boundary. The server validates identity and permissions for every protected operation.
+
+## Application Routes
+
+| Route | Purpose |
+|---|---|
+| `/` | Landing page and live discovery |
+| `/browse` | Search and filter public learners |
+| `/login` | Log in to an existing account |
+| `/signup` | Create an account and learning profile |
+| `/matches` | View personalized learning matches |
+| `/requests` | Manage received and sent requests |
+| `/profile` | Edit the authenticated profile |
+| `/profile?user=<id>` | View a public learner profile |
+| `/settings` | Manage account and privacy information |
+| `/notifications` | Open the notification workspace |
+
+## API Overview
+
+### Authentication
+
+```text
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/me
+```
+
+### Profiles and discovery
+
+```text
+GET   /api/users/public
+GET   /api/users/me
+PATCH /api/users/me
+GET   /api/users/:id
+GET   /api/matches
+```
+
+### Swap requests
+
+```text
+GET   /api/swap-requests
+POST  /api/swap-requests
+GET   /api/swap-requests/user/:userId
+PATCH /api/swap-requests/:id/status
+DELETE /api/swap-requests/:id
+```
 
 ## Project Structure
 
 ```text
 client/
-  index.html
   src/
-    App.tsx                 Application routes and providers
-    main.tsx                React entry point
-    index.css               Tailwind and application styles
-    components/             Shared UI and legacy reusable components
-      AppShell.jsx          Authenticated shell, navbar, profile menu, route guard
-    hooks/                  Client hooks such as toast handling
+    App.tsx
+    index.css
+    components/
+      AppShell.jsx
+      ui/
     lib/
-      auth.tsx              Shared server-session auth provider
-      queryClient.ts        API and React Query helpers
+      auth.tsx
+      queryClient.ts
     pages/
-      home.jsx              Discovery, filters, pagination, request modal
-      login.jsx             Login form
-      signup.jsx            Registration and initial profile form
-      profile.jsx           Authenticated profile editor
-      requests.jsx          Sent and received request dashboard
-      matches.jsx           Ranked compatibility results
-      browse.jsx            Public server-filtered discovery page
-      settings.jsx          Account and privacy settings overview
-      notifications.jsx     Notification placeholder until backend support exists
+      home.jsx
+      browse.jsx
+      login.jsx
+      signup.jsx
+      matches.jsx
+      requests.jsx
+      profile.jsx
+      settings.jsx
+      notifications.jsx
 
 server/
-  index.ts                  Express application bootstrap
-  routes.ts                 Auth, profile, discovery, matches, and request routes
-  auth.ts                   Required and optional authentication middleware
-  db.ts                     PostgreSQL pool and Drizzle database instance
-  storage.ts                Database repository and public-user mapping
-  matching.ts               Explainable compatibility ranking service
-  matching.test.ts          Matching unit tests
-  utils.ts                  Skill and email normalization helpers
-  vite.ts                   Development Vite integration and production static serving
+  index.ts
+  routes.ts
+  auth.ts
+  db.ts
+  storage.ts
+  matching.ts
+  matching.test.ts
+  utils.ts
+  vite.ts
 
 shared/
-  schema.ts                 Drizzle tables, enum, constraints, and inferred types
+  schema.ts
 
 migrations/
-  0000_initial.sql          PostgreSQL schema migration
+  0000_initial.sql
 
-.env.example                Required environment variable template
+.env.example
+neon.ts
 ```
 
-## Database Model
-
-### Users
-
-The `users` table contains:
-
-- `id`: serial primary key
-- `username`: unique public handle
-- `password_hash`: bcrypt password hash
-- `name`: display name
-- `email`: unique email address
-- `location`: optional location
-- `avatar`: optional avatar URL
-- `skills_offered`: PostgreSQL text array
-- `skills_wanted`: PostgreSQL text array
-- `availability`: PostgreSQL text array
-- `rating`: integer on the existing 0-50 display scale
-- `is_public`: discovery visibility flag
-- `created_at`: creation timestamp
-- `updated_at`: last-update timestamp
-
-### Swap requests
-
-The `swap_requests` table contains:
-
-- `id`: serial primary key
-- `from_user_id`: sender foreign key
-- `to_user_id`: recipient foreign key
-- `status`: PostgreSQL enum
-- `message`: optional request message
-- `created_at`: creation timestamp
-- `updated_at`: last-update timestamp
-
-Allowed statuses:
-
-```text
-pending
-accepted
-rejected
-cancelled
-```
-
-Database constraints include:
-
-- Non-null request participants
-- Foreign keys with cascade deletion
-- A check preventing self-requests
-- An index for request participants
-- An index for request status
-- A partial unique index preventing duplicate pending or accepted requests for the same direction
-
-The service layer additionally prevents duplicate active requests in either direction.
-
-## API Reference
-
-### Authentication
-
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| `POST` | `/api/auth/register` | Validate input, hash password, create user, start session | No |
-| `POST` | `/api/auth/login` | Verify credentials and start session | No |
-| `POST` | `/api/auth/logout` | Destroy session and clear cookie | Optional |
-| `GET` | `/api/auth/me` | Return the authenticated user | Required |
-
-### Users and profiles
-
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| `GET` | `/api/users/public` | Search and paginate public users | Optional |
-| `GET` | `/api/users/me` | Return the current user's profile | Required |
-| `PATCH` | `/api/users/me` | Update the current user's editable profile fields | Required |
-| `GET` | `/api/users/:id` | Return a public user or the owner's private profile | Optional |
-
-Discovery query parameters:
-
-```text
-search
-skill
-offeredSkill
-wantedSkill
-availability
-location
-sort=name|rating|newest
-page
-limit
-```
-
-Example:
-
-```text
-GET /api/users/public?offeredSkill=python&sort=rating&page=1&limit=12
-```
-
-Example response:
-
-```json
-{
-  "users": [],
-  "pagination": {
-    "page": 1,
-    "limit": 12,
-    "total": 0,
-    "totalPages": 0
-  }
-}
-```
-
-### Matches
-
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| `GET` | `/api/matches` | Return ranked compatible public users | Required |
-
-Example response shape:
-
-```json
-{
-  "matches": [
-    {
-      "user": {
-        "id": 2,
-        "name": "Example User",
-        "skillsOffered": ["react"],
-        "skillsWanted": ["python"]
-      },
-      "compatibilityScore": 97,
-      "matchingSkills": ["python", "react"],
-      "reasons": [
-        "They offer a skill you want",
-        "You offer a skill they want",
-        "Availability overlaps"
-      ]
-    }
-  ]
-}
-```
-
-### Swap requests
-
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| `GET` | `/api/swap-requests` | Return requests where the current user is sender or recipient | Required |
-| `POST` | `/api/swap-requests` | Create a pending request | Required |
-| `GET` | `/api/swap-requests/user/:userId` | Compatibility endpoint for the current user's request list | Required |
-| `PATCH` | `/api/swap-requests/:id/status` | Accept, reject, or cancel according to ownership rules | Required |
-| `DELETE` | `/api/swap-requests/:id` | Cancel a pending request owned by the sender | Required |
-
-The server derives the sender from the authenticated session. A client cannot choose another user as `fromUserId`.
-
-## Security Architecture
-
-### Password security
-
-- Passwords are validated for length at the API boundary.
-- Passwords are hashed using bcrypt with a work factor of 12.
-- Only `passwordHash` is stored in the database.
-- Password hashes are removed before user objects are serialized.
-
-### Session security
-
-- Sessions are stored in PostgreSQL through `connect-pg-simple`.
-- Session cookies are HTTP-only.
-- Cookies use `sameSite: "lax"`.
-- Cookies are marked secure in production.
-- Session lifetime is seven days.
-- The application requires `SESSION_SECRET` at startup.
-
-### Authorization
-
-- `requireAuth` rejects unauthenticated protected requests with HTTP 401.
-- Profile updates operate only on `req.user.id`.
-- Request reads are restricted to the current user's sent or received requests.
-- Recipients alone can accept or reject requests.
-- Senders alone can cancel pending requests.
-- Non-pending requests cannot transition.
-
-### Response privacy
-
-The backend does not directly serialize database user rows for public responses.
-
-Public user responses exclude:
-
-- Password hash
-- Email address
-- Session data
-- Internal database details
-
-Authenticated user responses may include the user's own email, but never the password hash.
-
-## Running Locally
+## Getting Started
 
 ### Prerequisites
 
-- Node.js 20 or newer recommended
+Install:
+
+- Node.js 20 or newer
 - npm
-- PostgreSQL 14 or newer recommended
+- PostgreSQL, or access to a Neon PostgreSQL project
 
-### Environment variables
+### Install dependencies
 
-Copy the template:
-
-```bash
-cp .env.example .env
+```powershell
+npm install
 ```
 
-On Windows PowerShell:
+### Configure environment variables
+
+Create a local environment file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Configure:
+Set the values in `.env`:
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/skillswap
+DATABASE_URL=postgresql://username:password@host:5432/skillswap
 SESSION_SECRET=use-a-long-random-secret
 NODE_ENV=development
 DATABASE_POOL_SIZE=10
 ```
 
-Do not commit `.env` or real credentials.
-
-### Install dependencies
-
-```bash
-npm install
-```
+Never commit `.env`. It contains private database credentials and is excluded by `.gitignore`.
 
 ### Prepare the database
 
-The project provides a SQL migration at [migrations/0000_initial.sql](migrations/0000_initial.sql).
+Push the Drizzle schema to PostgreSQL:
 
-The Drizzle push command is also available:
-
-```bash
+```powershell
 npm run db:push
 ```
 
-The application will refuse to start if `DATABASE_URL` or `SESSION_SECRET` is missing.
+The repository also includes [migrations/0000_initial.sql](migrations/0000_initial.sql) as a reproducible SQL schema reference.
 
-### Neon setup
+### Start the application
 
-This workspace is linked to the Neon project used for the production database branch. Neon configuration is kept in [neon.ts](neon.ts), and the committed policy intentionally declares the default configuration:
+```powershell
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5000
+```
+
+## Neon Setup
+
+The project is linked to a Neon production branch through [neon.ts](neon.ts):
 
 ```ts
 import { defineConfig } from "@neon/config/v1";
@@ -564,7 +426,7 @@ import { defineConfig } from "@neon/config/v1";
 export default defineConfig({});
 ```
 
-The local Neon CLI workflow is:
+To connect a local checkout to the Neon project:
 
 ```powershell
 npm install -g neon@latest
@@ -573,145 +435,72 @@ neon link --project-id green-leaf-75115622 --branch production -y
 neon deploy
 ```
 
-`neon link` writes the branch connection variables into the local `.env` file. `.env` is excluded from Git and must never be committed. The Neon Skills CLI additionally requires Node.js `22.20.0` or newer; the application itself does not require that CLI feature to run.
-
-### Start development mode
-
-```bash
-npm run dev
-```
-
-The development server serves the API and Vite client at:
-
-```text
-http://localhost:5000
-```
-
-### Production build and start
-
-```bash
-npm run build
-npm start
-```
-
-The production build creates the client bundle in `dist/public` and the bundled server at `dist/index.js`.
+`neon link` pulls the branch connection variables into the local `.env` file. Do not commit that file.
 
 ## Development Commands
 
 | Command | Purpose |
 |---|---|
-| `npm install` | Install dependencies |
+| `npm install` | Install project dependencies |
 | `npm run dev` | Start the development server |
-| `npm run check` | Run TypeScript checking |
-| `npm test` | Run TypeScript unit tests |
-| `npm run build` | Build the client and server |
+| `npm run check` | Run TypeScript validation |
+| `npm test` | Run the matching unit tests |
+| `npm run build` | Build the frontend and backend for production |
 | `npm start` | Start the production build |
 | `npm run db:push` | Push the Drizzle schema to PostgreSQL |
 
-## Testing
+## Testing and Validation
 
-The repository currently contains focused unit tests for the matching engine in [server/matching.test.ts](server/matching.test.ts).
+Run the standard validation commands:
 
-Current verified result:
-
-```text
-2 tests passed
-0 tests failed
+```powershell
+npm run check
+npm test
+npm run build
 ```
 
-The tests cover:
+The current matching tests verify:
 
 - Mutual skill compatibility ranking
-- Candidate ordering
-- Exclusion of candidates without skill compatibility
+- Match ordering
+- Exclusion of candidates without meaningful skill compatibility
 
-Recommended next testing work:
+## Production Build
 
-- Registration and duplicate-account integration tests
-- Password hashing and login tests
-- Session and logout tests
-- Profile ownership tests
-- Private-profile visibility tests
-- Request authorization tests
-- Duplicate and self-request tests
-- Request state-transition tests
-- PostgreSQL repository tests
-- Browser end-to-end tests
+Build the application:
 
-## Validation Results
+```powershell
+npm run build
+```
 
-The current source tree has passed:
+Start the compiled application:
 
-- `npm run check`
-- `npm test`
-- `npm run build`
+```powershell
+npm start
+```
 
-The build reports an outdated Browserslist database warning. This does not currently block compilation.
+The build produces:
 
-Full API integration testing requires a reachable PostgreSQL database configured through `DATABASE_URL`. The local static checks and matching tests do not prove that a configured production database is reachable.
+- Frontend assets in `dist/public`
+- Bundled server output in `dist/index.js`
 
-## Known Limitations and Next Steps
+## Why SkillSwap Matters
 
-### Notifications
+SkillSwap turns learning into a shared activity.
 
-The request system does not yet persist notifications. A future `notifications` table should support:
+For learners, it provides a way to find people who understand their goals. For teachers, it creates a place to share practical knowledge and receive help in return. For communities, it encourages collaboration across backgrounds, locations, and experience levels.
 
-- Recipient user ID
-- Notification type
-- Message
-- Related request ID
-- Read/unread state
-- Creation timestamp
+The result is a platform where learning is:
 
-### Ratings and reviews
+- More personal
+- More flexible
+- More collaborative
+- More affordable
+- More connected to real people
+- Driven by mutual growth
 
-The current rating field is displayed but there is no review workflow. A production implementation should add a `reviews` table and enforce:
+## Product Summary
 
-- Ratings from 1 to 5
-- One review per reviewer per completed swap
-- Reviewer participation in the swap
-- No self-reviews
-- Review eligibility only after a completed interaction
+SkillSwap is a full-stack skill exchange platform that combines secure accounts, editable learning profiles, server-side discovery, explainable matching, and authorized swap-request workflows in one cohesive product.
 
-### Completed swaps
-
-The current request state machine ends at `accepted`, `rejected`, or `cancelled`. A future completion flow should deliberately add a `completed` status and update transition and review rules consistently.
-
-### Production hardening
-
-Before deployment, consider adding:
-
-- Rate limiting on authentication and request creation
-- Security headers such as Helmet
-- Explicit CORS configuration if frontend and API use different origins
-- CSRF protection if the deployment topology requires it
-- Structured logging and monitoring
-- Health and readiness endpoints
-- Docker and CI/CD configuration
-- Dependency vulnerability remediation
-
-## Interview Talking Points
-
-### Product explanation
-
-> SkillSwap is a peer-to-peer learning platform. Users publish the skills they can teach and the skills they want to learn. The platform filters public profiles, ranks mutually compatible partners, and provides an authorized request workflow for starting a skill exchange.
-
-### Architecture explanation
-
-> The React/Vite client uses TanStack Query to communicate with an Express REST API. Express validates requests with Zod and authenticates users through PostgreSQL-backed HTTP-only sessions. Business operations use a database repository implemented with Drizzle ORM, while matching is isolated in a pure service that can be tested independently.
-
-### Security explanation
-
-> The server is the source of truth for identity. Passwords are bcrypt-hashed, sessions are stored server-side, protected routes use authentication middleware, and resource mutations verify ownership. Public DTOs are constructed explicitly so password hashes and private email data are never exposed.
-
-### Matching explanation
-
-> Matching scores mutual skill exchange more heavily than one-way interest. The algorithm awards points for skills the candidate offers that the current user wants, skills the current user offers that the candidate wants, availability overlap, location compatibility, and rating. Matches include reasons so the score is explainable to the user.
-
-### Resume-compatible description
-
-A truthful current description is:
-
-> Built a full-stack peer-to-peer skill exchange platform using React, Express, PostgreSQL, Drizzle ORM, and server-side sessions. Implemented secure authentication, editable profiles, server-side skill discovery, explainable compatibility matching, and authorized swap-request workflows with accept, reject, cancel, duplicate-prevention, and self-request validation.
-
-Do not claim a measured “60% improvement” unless an experiment or production metric exists to support it.
+> Share what you know. Find what you need. Grow together.
