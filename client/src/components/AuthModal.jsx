@@ -41,7 +41,8 @@ const AuthModal = ({ isOpen, onClose, mode, onSwitchMode }) => {
         ...formData,
         skillsOffered: [],
         skillsWanted: [],
-        availability: "flexible"
+        availability: ["flexible"],
+        avatar: null,
       });
       
       if (result.success) {
