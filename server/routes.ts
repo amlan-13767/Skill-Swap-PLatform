@@ -3,19 +3,27 @@ import { createServer, type Server } from "http";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcryptjs";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { pool } from "./db";
+import { db, ensureDatabaseSchema, pool } from "./db";
 import { loadOptionalUser, requireAuth } from "./auth";
 import { storage, toPublicUser } from "./storage";
 import { normalizeEmail, normalizeSkills, safeUser } from "./utils";
 import { rankMatches } from "./matching";
-import { swapRequestStatuses, type SwapRequestStatus } from "@shared/schema";
+import {
+  chatConversations,
+  conversationParticipants,
+  notifications,
+  reviews,
+  swapRequestStatuses,
+  type SwapRequestStatus,
+} from "@shared/schema";
 
 const PgSession = connectPgSimple(session);
 const availabilityValues = ["weekdays", "weekends", "evenings", "flexible"] as const;
 const skillSchema = z.array(z.string().trim().min(1).max(60)).max(20).default([]);
 
-const registrationSchema = z.object({
+export const registrationSchema = z.object({
   username: z.string().trim().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/),
   password: z.string().min(8).max(128),
   name: z.string().trim().min(1).max(100),
@@ -28,7 +36,7 @@ const registrationSchema = z.object({
   isPublic: z.boolean().default(true),
 });
 
-const loginSchema = z.object({
+export const loginSchema = z.object({
   email: z.string().email().transform(normalizeEmail),
   password: z.string().min(1),
 });
@@ -40,6 +48,15 @@ const profileSchema = registrationSchema.omit({ password: true, username: true }
 const requestSchema = z.object({
   toUserId: z.coerce.number().int().positive(),
   message: z.string().trim().max(1000).optional().nullable(),
+});
+
+const messageSchema = z.object({
+  content: z.string().trim().min(1).max(2000),
+});
+
+const reviewSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+  comment: z.string().trim().max(500).optional().nullable(),
 });
 
 const statusSchema = z.object({
@@ -72,7 +89,18 @@ function publicResponse(user: Awaited<ReturnType<typeof storage.getUser>>) {
   return user ? toPublicUser(user) : null;
 }
 
+async function hasAcceptedSwap(firstUserId: number, secondUserId: number) {
+  return (await storage.getSwapRequestsByUser(firstUserId)).some((request) =>
+    request.status === "accepted" && (
+      (request.fromUserId === firstUserId && request.toUserId === secondUserId) ||
+      (request.fromUserId === secondUserId && request.toUserId === firstUserId)
+    ),
+  );
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  await ensureDatabaseSchema();
+
   const sessionSecret = process.env.SESSION_SECRET;
   if (!sessionSecret) {
     throw new Error("SESSION_SECRET is required to start the application");
@@ -205,7 +233,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user || (!user.isPublic && user.id !== req.user?.id)) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json({ user: user.id === req.user?.id ? safeUser(user) : toPublicUser(user) });
+      const ratingSummary = await storage.getAverageRatingForUser(user.id);
+      res.json({
+        user: user.id === req.user?.id ? safeUser(user) : toPublicUser(user),
+        ratingSummary,
+      });
     } catch (error) {
       next(error);
     }
@@ -242,6 +274,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         toUserId: data.toUserId,
         message: data.message ?? null,
       });
+      await storage.createNotification({
+        userId: recipient.id,
+        type: "swap_request",
+        title: "New skill swap request",
+        message: `New skill swap request from ${req.user!.name}`,
+        relatedEntityType: "swap_request",
+        relatedEntityId: swapRequest.id,
+        read: false,
+      });
       res.status(201).json({ request: swapRequest });
     } catch (error) {
       next(error);
@@ -271,6 +312,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isRecipientAction && !isSenderCancellation) return res.status(403).json({ message: "Forbidden" });
 
       const updatedRequest = await storage.updateSwapRequestStatus(id, status as SwapRequestStatus);
+      if (updatedRequest) {
+        if (status === "accepted") {
+          await storage.getOrCreateConversation(updatedRequest.fromUserId, updatedRequest.toUserId);
+          await storage.createNotification({
+            userId: updatedRequest.fromUserId,
+            type: "swap_request_accepted",
+            title: "Request accepted",
+            message: `${req.user!.name} accepted your skill swap request.`,
+            relatedEntityType: "swap_request",
+            relatedEntityId: updatedRequest.id,
+            read: false,
+          });
+        } else if (status === "rejected") {
+          await storage.createNotification({
+            userId: updatedRequest.fromUserId,
+            type: "swap_request_rejected",
+            title: "Request declined",
+            message: `${req.user!.name} declined your skill swap request.`,
+            relatedEntityType: "swap_request",
+            relatedEntityId: updatedRequest.id,
+            read: false,
+          });
+        } else if (status === "cancelled") {
+          await storage.createNotification({
+            userId: updatedRequest.toUserId,
+            type: "swap_request_cancelled",
+            title: "Request cancelled",
+            message: `${req.user!.name} cancelled their skill swap request.`,
+            relatedEntityType: "swap_request",
+            relatedEntityId: updatedRequest.id,
+            read: false,
+          });
+        }
+      }
       res.json({ request: updatedRequest });
     } catch (error) {
       next(error);
@@ -286,7 +361,181 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only the sender can cancel a pending request" });
       }
       const updatedRequest = await storage.updateSwapRequestStatus(id, "cancelled");
+      if (updatedRequest) {
+        await storage.createNotification({
+          userId: updatedRequest.toUserId,
+          type: "swap_request_cancelled",
+          title: "Request cancelled",
+          message: `${req.user!.name} cancelled their skill swap request.`,
+          relatedEntityType: "swap_request",
+          relatedEntityId: updatedRequest.id,
+          read: false,
+        });
+      }
       res.json({ request: updatedRequest });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/notifications", requireAuth, async (req, res, next) => {
+    try {
+      const notificationsList = await storage.getNotificationsByUser(req.user!.id);
+      res.json({ notifications: notificationsList });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth, async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const notification = await db.select().from(notifications).where(eq(notifications.id, id)).then((rows) => rows[0]);
+      if (!notification) return res.status(404).json({ message: "Notification not found" });
+      if (notification.userId !== req.user!.id) return res.status(403).json({ message: "Forbidden" });
+      const updated = await storage.markNotificationRead(id);
+      res.json({ notification: updated });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/notifications/read-all", requireAuth, async (req, res, next) => {
+    try {
+      const count = await storage.markAllNotificationsRead(req.user!.id);
+      res.json({ count });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/chat/conversations", requireAuth, async (req, res, next) => {
+    try {
+      const conversations = await storage.getConversationsForUser(req.user!.id);
+      const data = await Promise.all(conversations.map(async (entry) => {
+        const otherUser = await storage.getUser(entry.otherUserId);
+        const lastMessage = entry.lastMessage ? {
+          id: entry.lastMessage.id,
+          content: entry.lastMessage.content,
+          senderUserId: entry.lastMessage.senderUserId,
+          createdAt: entry.lastMessage.createdAt,
+        } : null;
+        return {
+          id: entry.conversation.id,
+          participant: otherUser ? toPublicUser(otherUser) : null,
+          unreadCount: entry.unreadCount,
+          updatedAt: entry.conversation.updatedAt,
+          lastMessage,
+        };
+      }));
+      res.json({ conversations: data });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/chat/conversations/:id/messages", requireAuth, async (req, res, next) => {
+    try {
+      const conversationId = z.coerce.number().int().positive().parse(req.params.id);
+      const conversation = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
+      if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+      const isParticipant = [conversation.userAId, conversation.userBId].includes(req.user!.id);
+      if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
+      if (!await hasAcceptedSwap(conversation.userAId, conversation.userBId)) {
+        return res.status(403).json({ message: "Chat is available only for accepted swaps" });
+      }
+      const messages = await storage.getConversationMessages(conversationId);
+      await storage.markConversationRead(conversationId, req.user!.id);
+      res.json({ messages });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/chat/conversations/:id/messages", requireAuth, async (req, res, next) => {
+    try {
+      const conversationId = z.coerce.number().int().positive().parse(req.params.id);
+      const { content } = messageSchema.parse(req.body);
+      const conversation = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, conversationId) });
+      if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+      const isParticipant = [conversation.userAId, conversation.userBId].includes(req.user!.id);
+      if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
+      if (!await hasAcceptedSwap(conversation.userAId, conversation.userBId)) {
+        return res.status(403).json({ message: "Chat is available only for accepted swaps" });
+      }
+      const message = await storage.createChatMessage({
+        conversationId,
+        senderUserId: req.user!.id,
+        content,
+      });
+      await db.update(chatConversations)
+        .set({ updatedAt: new Date() })
+        .where(eq(chatConversations.id, conversationId));
+      const recipientId = conversation.userAId === req.user!.id ? conversation.userBId : conversation.userAId;
+      await storage.createNotification({
+        userId: recipientId,
+        type: "chat_message",
+        title: "New message",
+        message: `New message from ${req.user!.name}`,
+        relatedEntityType: "chat_conversation",
+        relatedEntityId: conversationId,
+        read: false,
+      });
+      res.status(201).json({ message });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/chat/conversations", requireAuth, async (req, res, next) => {
+    try {
+      const { userId } = z.object({ userId: z.coerce.number().int().positive() }).parse(req.body);
+      if (userId === req.user!.id) return res.status(400).json({ message: "You cannot chat with yourself" });
+      const otherUser = await storage.getUser(userId);
+      if (!otherUser) return res.status(404).json({ message: "User not found" });
+      if (!await hasAcceptedSwap(req.user!.id, userId)) {
+        return res.status(403).json({ message: "Chat is available after a swap request is accepted" });
+      }
+      const conversation = await storage.getOrCreateConversation(req.user!.id, userId);
+      res.status(201).json({ conversation });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/users/:id/reviews", requireAuth, async (req, res, next) => {
+    try {
+      const userId = z.coerce.number().int().positive().parse(req.params.id);
+      const reviewsList = await storage.getReviewsForUser(userId);
+      const reviewers = await Promise.all(reviewsList.map(async (review) => {
+        const reviewer = await storage.getUser(review.reviewerUserId);
+        return { ...review, reviewer: reviewer ? toPublicUser(reviewer) : null };
+      }));
+      res.json({ reviews: reviewers });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/users/:id/reviews", requireAuth, async (req, res, next) => {
+    try {
+      const reviewedUserId = z.coerce.number().int().positive().parse(req.params.id);
+      const data = reviewSchema.parse(req.body);
+      if (reviewedUserId === req.user!.id) return res.status(400).json({ message: "You cannot review yourself" });
+      const activeRequest = (await storage.getSwapRequestsByUser(req.user!.id)).find((request) =>
+        request.status === "accepted" && ((request.fromUserId === req.user!.id && request.toUserId === reviewedUserId) || (request.fromUserId === reviewedUserId && request.toUserId === req.user!.id)),
+      );
+      if (!activeRequest) return res.status(400).json({ message: "You must have an accepted exchange to review this user" });
+      const existing = await db.select().from(reviews).where(and(eq(reviews.swapRequestId, activeRequest.id), eq(reviews.reviewerUserId, req.user!.id))).then((rows) => rows[0]);
+      if (existing) return res.status(409).json({ message: "You have already reviewed this exchange" });
+      const review = await storage.createReview({
+        reviewerUserId: req.user!.id,
+        reviewedUserId,
+        swapRequestId: activeRequest.id,
+        rating: data.rating,
+        comment: data.comment ?? null,
+      });
+      res.status(201).json({ review });
     } catch (error) {
       next(error);
     }

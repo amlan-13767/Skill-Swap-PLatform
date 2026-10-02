@@ -14,6 +14,8 @@ import Matches from "@/pages/matches";
 import Browse from "@/pages/browse";
 import Settings from "@/pages/settings";
 import Notifications from "@/pages/notifications";
+import PublicProfile from "@/pages/public-profile";
+import Chat from "@/pages/chat";
 import { ProtectedRoute } from "@/components/AppShell";
 
 function Router() {
@@ -23,8 +25,10 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
       <Route path="/browse" component={Browse} />
-      <Route path="/profile">{() => <ProtectedRoute><Profile /></ProtectedRoute>}</Route>
+      <Route path="/profile">{() => <ProtectedRoute>{new URLSearchParams(window.location.search).has("user") ? <PublicProfile /> : <Profile />}</ProtectedRoute>}</Route>
       <Route path="/requests">{() => <ProtectedRoute><Requests /></ProtectedRoute>}</Route>
+      <Route path="/chat">{() => <ProtectedRoute><Chat /></ProtectedRoute>}</Route>
+      <Route path="/chat/:id">{(params) => <ProtectedRoute><Chat conversationId={params.id} /></ProtectedRoute>}</Route>
       <Route path="/matches">{() => <ProtectedRoute><Matches /></ProtectedRoute>}</Route>
       <Route path="/settings">{() => <ProtectedRoute><Settings /></ProtectedRoute>}</Route>
       <Route path="/notifications">{() => <ProtectedRoute><Notifications /></ProtectedRoute>}</Route>

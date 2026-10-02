@@ -73,6 +73,18 @@ Browse public profiles or open the Matches page. The matching engine compares bo
 
 Send a message with a skill-swap request. The recipient can accept or reject it, while the sender can cancel a pending request.
 
+## Local development demo data
+
+This project includes a development-only demo seeding flow intended for local testing only.
+
+- Copy `.env.example` to `.env` and set `DATABASE_URL`, `SESSION_SECRET`, and `NODE_ENV=development`.
+- Create or migrate the local Postgres database before running the app.
+- Run `npm run seed:demo` to create realistic demo accounts, including intentionally matched users and a few swap records.
+- Run `npm run seed:demo:clear` to remove only the seeded demo rows.
+- Set `DEMO_PASSWORD` in `.env` if you want a custom local password; otherwise the script uses `SkillSwapDemo123!`.
+
+> Warning: the demo accounts are for local development only. Never use them in production or commit your real `.env` credentials.
+
 ## Main Product Areas
 
 ### Home

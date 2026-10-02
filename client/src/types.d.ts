@@ -23,6 +23,11 @@ declare module "@/pages/profile" {
   export default component;
 }
 
+declare module "@/pages/public-profile" {
+  const component: any;
+  export default component;
+}
+
 declare module "@/pages/requests" {
   const component: any;
   export default component;
@@ -44,6 +49,11 @@ declare module "@/pages/settings" {
 }
 
 declare module "@/pages/notifications" {
+  const component: any;
+  export default component;
+}
+
+declare module "@/pages/chat" {
   const component: any;
   export default component;
 }

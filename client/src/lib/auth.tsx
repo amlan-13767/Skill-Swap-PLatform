@@ -28,6 +28,29 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function formatAuthError(message: string | undefined, fallback: string) {
+  const normalized = (message ?? "").trim();
+  if (!normalized) return fallback;
+
+  const lower = normalized.toLowerCase();
+  if (lower.includes("invalid credentials") || lower.includes("invalid email or password")) {
+    return "Invalid email or password.";
+  }
+  if (lower.includes("already in use") || lower.includes("already registered")) {
+    return "Email already registered.";
+  }
+  if (lower.includes("invalid email")) {
+    return "Invalid email address.";
+  }
+  if (lower.includes("password must") || lower.includes("password")) {
+    return normalized;
+  }
+  if (lower.includes("username")) {
+    return normalized;
+  }
+  return fallback;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
       return { success: true, user: data.user };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Login failed" };
+      return {
+        success: false,
+        error: formatAuthError(
+          error instanceof Error ? error.message : undefined,
+          "Unable to log in. Please check your details and try again.",
+        ),
+      };
     }
   };
 
@@ -58,7 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
       return { success: true, user: data.user };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Registration failed" };
+      return {
+        success: false,
+        error: formatAuthError(
+          error instanceof Error ? error.message : undefined,
+          "Unable to create your account. Something went wrong while creating your account. Please check your details and try again.",
+        ),
+      };
     }
   };
 

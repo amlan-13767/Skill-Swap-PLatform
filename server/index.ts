@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { ensureDatabaseSchema, getDatabaseStartupErrorMessage } from "./db";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -37,11 +38,32 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    await ensureDatabaseSchema();
+  } catch (error) {
+    console.error(`\nSkillSwap could not initialize its database: ${getDatabaseStartupErrorMessage(error)}`);
+    console.error("Check DATABASE_URL in .env and ensure the database and credentials are correct.\n");
+    process.exit(1);
+  }
+
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.name === "ZodError" ? 400 : err.status || err.statusCode || 500;
     const message = status >= 500 ? "Internal server error" : err.message || "Invalid request";
+
+    if (status >= 500) {
+      console.error(`[api:error] ${req.method} ${req.path}`, {
+        status,
+        message: err.message,
+        stack: err.stack,
+      });
+    } else if (status >= 400) {
+      console.warn(`[api:client-error] ${req.method} ${req.path}`, {
+        status,
+        message: err.message,
+      });
+    }
 
     if (!res.headersSent) res.status(status).json({ message });
   });
@@ -58,7 +80,7 @@ app.use((req, res, next) => {
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = 5000;
+  const port = Number(process.env.PORT || 5000);
 server.listen(port, () => {
   log(`serving on http://localhost:${port}`);
 });

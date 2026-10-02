@@ -1,6 +1,21 @@
-import { and, asc, count, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import { db } from "./db";
-import { swapRequests, users, type SwapRequest, type SwapRequestStatus, type User } from "@shared/schema";
+import {
+  chatConversations,
+  chatMessages,
+  conversationParticipants,
+  notifications,
+  reviews,
+  swapRequests,
+  users,
+  type ChatConversation,
+  type ChatMessage,
+  type Notification,
+  type Review,
+  type SwapRequest,
+  type SwapRequestStatus,
+  type User,
+} from "@shared/schema";
 
 export type PublicUser = Omit<User, "passwordHash" | "email">;
 
@@ -39,6 +54,18 @@ export interface IStorage {
   getSwapRequest(id: number): Promise<SwapRequest | undefined>;
   updateSwapRequestStatus(id: number, status: SwapRequestStatus): Promise<SwapRequest | undefined>;
   deleteSwapRequest(id: number): Promise<boolean>;
+  createNotification(notification: typeof notifications.$inferInsert): Promise<Notification>;
+  getNotificationsByUser(userId: number): Promise<Notification[]>;
+  markNotificationRead(id: number): Promise<Notification | undefined>;
+  markAllNotificationsRead(userId: number): Promise<number>;
+  getOrCreateConversation(userAId: number, userBId: number): Promise<ChatConversation>;
+  getConversationsForUser(userId: number): Promise<Array<{ conversation: ChatConversation; otherUserId: number; unreadCount: number; lastMessage: ChatMessage | null }>>;
+  getConversationMessages(conversationId: number, limit?: number): Promise<ChatMessage[]>;
+  createChatMessage(message: typeof chatMessages.$inferInsert): Promise<ChatMessage>;
+  markConversationRead(conversationId: number, userId: number): Promise<void>;
+  getReviewsForUser(userId: number): Promise<Review[]>;
+  getAverageRatingForUser(userId: number): Promise<{ average: number; count: number }>;
+  createReview(review: typeof reviews.$inferInsert): Promise<Review>;
 }
 
 export function toPublicUser(user: User): PublicUser {
@@ -149,6 +176,111 @@ export class DatabaseStorage implements IStorage {
   async deleteSwapRequest(id: number) {
     const deleted = await db.delete(swapRequests).where(eq(swapRequests.id, id)).returning({ id: swapRequests.id });
     return deleted.length > 0;
+  }
+
+  async createNotification(notification: typeof notifications.$inferInsert) {
+    const [created] = await db.insert(notifications).values(notification).returning();
+    return created;
+  }
+
+  async getNotificationsByUser(userId: number) {
+    return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
+  }
+
+  async markNotificationRead(id: number) {
+    const [updated] = await db.update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markAllNotificationsRead(userId: number) {
+    const result = await db.update(notifications)
+      .set({ read: true })
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)))
+      .returning({ id: notifications.id });
+    return result.length;
+  }
+
+  async getOrCreateConversation(userAId: number, userBId: number) {
+    const [first, second] = [Math.min(userAId, userBId), Math.max(userAId, userBId)];
+    const existing = await db.query.chatConversations.findFirst({
+      where: and(eq(chatConversations.userAId, first), eq(chatConversations.userBId, second)),
+    });
+    if (existing) return existing;
+
+    const [created] = await db.insert(chatConversations).values({
+      userAId: first,
+      userBId: second,
+    }).returning();
+    await Promise.all([
+      db.insert(conversationParticipants).values({ conversationId: created.id, userId: first }),
+      db.insert(conversationParticipants).values({ conversationId: created.id, userId: second }),
+    ]);
+    return created;
+  }
+
+  async getConversationsForUser(userId: number) {
+    const rows = await db.select().from(conversationParticipants).where(eq(conversationParticipants.userId, userId));
+    const acceptedRequests = await this.getSwapRequestsByUser(userId);
+    const acceptedPartnerIds = new Set(acceptedRequests
+      .filter((request) => request.status === "accepted")
+      .map((request) => request.fromUserId === userId ? request.toUserId : request.fromUserId));
+    const conversations = await Promise.all(rows.map(async (row) => {
+      const conversation = await db.query.chatConversations.findFirst({ where: eq(chatConversations.id, row.conversationId) });
+      if (!conversation) return null;
+      const otherUserId = conversation.userAId === userId ? conversation.userBId : conversation.userAId;
+      if (!acceptedPartnerIds.has(otherUserId)) return null;
+      const lastMessage = await db.select().from(chatMessages).where(eq(chatMessages.conversationId, conversation.id)).orderBy(desc(chatMessages.createdAt)).limit(1).then((items) => items[0] ?? null);
+      const unreadCount = await db.select({ count: count() }).from(chatMessages)
+        .where(and(
+          eq(chatMessages.conversationId, conversation.id),
+          ne(chatMessages.senderUserId, userId),
+          row.lastReadAt ? sql`${chatMessages.createdAt} > ${row.lastReadAt}` : sql`TRUE`,
+        ))
+        .then((result) => Number(result[0]?.count ?? 0));
+      return { conversation, otherUserId, unreadCount, lastMessage };
+    }));
+    return conversations.filter(Boolean) as Array<{ conversation: ChatConversation; otherUserId: number; unreadCount: number; lastMessage: ChatMessage | null }>;
+  }
+
+  async getConversationMessages(conversationId: number, limit = 50) {
+    return db.select().from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(limit)
+      .then((items) => items.reverse());
+  }
+
+  async createChatMessage(message: typeof chatMessages.$inferInsert) {
+    const [created] = await db.insert(chatMessages).values(message).returning();
+    return created;
+  }
+
+  async markConversationRead(conversationId: number, userId: number) {
+    const row = await db.query.conversationParticipants.findFirst({
+      where: and(eq(conversationParticipants.conversationId, conversationId), eq(conversationParticipants.userId, userId)),
+    });
+    if (!row) return;
+    await db.update(conversationParticipants)
+      .set({ lastReadAt: new Date() })
+      .where(and(eq(conversationParticipants.conversationId, conversationId), eq(conversationParticipants.userId, userId)));
+  }
+
+  async getReviewsForUser(userId: number) {
+    return db.select().from(reviews).where(eq(reviews.reviewedUserId, userId)).orderBy(desc(reviews.createdAt));
+  }
+
+  async getAverageRatingForUser(userId: number) {
+    const rows = await db.select({ average: sql<number>`AVG(${reviews.rating})`, count: count() }).from(reviews).where(eq(reviews.reviewedUserId, userId));
+    const result = rows[0];
+    return { average: Number(result?.average ?? 0), count: Number(result?.count ?? 0) };
+  }
+
+  async createReview(review: typeof reviews.$inferInsert) {
+    const [created] = await db.insert(reviews).values(review).returning();
+    return created;
   }
 }
 
